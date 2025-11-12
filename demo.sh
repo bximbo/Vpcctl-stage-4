@@ -57,7 +57,7 @@ sudo ip netns exec bimbo-vpc2-public ping -c 2 10.10.1.2 || true
 cat > policy.json <<EOF
 {
   "ingress": [
-    {"port": 8080, "protocol": "tcp", "action": "allow"},
+    {"port": 80, "protocol": "tcp", "action": "allow"},
     {"port": 22, "protocol": "tcp", "action": "deny"}
   ],
   "egress": [
