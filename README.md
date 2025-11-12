@@ -245,9 +245,7 @@ This wipes everything and returns your system to its pre-demo state.
 
 ## 8. Final Thought
 
-Cloud networks aren’t magic — they’re Linux, scaled and abstracted.
-**Bimbo VPC Controller** lets you see that magic up close, step by step, in your own terminal.
-Once you understand this layer, AWS VPCs, GCP VPCs, and Azure VNets all start to make perfect sense.
+This makes sense to me. I just hope it makes sense to you too because I rushed to submit </3
 
 ---
 
