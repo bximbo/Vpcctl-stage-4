@@ -89,7 +89,9 @@ def add_net(args):
     shell(["ip", "netns", "exec", ns, "ip", "link", "set", veth1, "up"])
     shell(["ip", "link", "set", veth2, "up"])
     shell(["ip", "link", "set", veth2, "master", br])
+    # Ensure bridge IP is set and up
     shell(["ip", "addr", "add", f"{gw}/{mask}", "dev", br], silent=True)
+    shell(["ip", "link", "set", br, "up"], silent=True)
     shell(["ip", "netns", "exec", ns, "ip", "route", "add", "default", "via", gw])
     vpc_data["subnets"][netname] = {"ns": ns, "veth1": veth1, "veth2": veth2, "cidr": cidr, "gw": gw, "hostip": hostip}
     save_state(vpc, vpc_data)
@@ -104,12 +106,16 @@ def launch_http(args):
     ns = vpc_data["subnets"][netname]["ns"]
     logfile = LOG_DIR / f"http_{netname}_{port}.log"
     cmd = ["ip", "netns", "exec", ns, "python3", "-m", "http.server", str(port)]
-    with open(logfile, "w") as f:
-        proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT)
-    vpc_data["subnets"][netname]["http"] = {"port": port, "pid": proc.pid, "log": str(logfile)}
-    save_state(vpc, vpc_data)
-    print(f"[OK] HTTP server running in {netname} on port {port} (PID {proc.pid})")
-    bimbo_log("launch_http", f"HTTP server started in {netname} ({vpc}) port {port} PID {proc.pid}")
+    try:
+        with open(logfile, "w") as f:
+            proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT)
+        vpc_data["subnets"][netname]["http"] = {"port": port, "pid": proc.pid, "log": str(logfile)}
+        save_state(vpc, vpc_data)
+        print(f"[OK] HTTP server running in {netname} on port {port} (PID {proc.pid})")
+        bimbo_log("launch_http", f"HTTP server started in {netname} ({vpc}) port {port} PID {proc.pid}")
+    except Exception as e:
+        print(f"[ERR] Failed to launch HTTP server: {e}")
+        bimbo_log("launch_http", f"Failed to launch HTTP server in {netname} ({vpc}): {e}")
 
 def stop_http(args):
     vpc = args.vpc
@@ -171,10 +177,26 @@ def apply_policy(args):
     ns = vpc_data["subnets"][netname]["ns"]
     with open(policyfile) as f:
         policy = json.load(f)
+    def validate_action(action):
+        act = action.strip().lower()
+        if act in ("allow", "accept"):
+            return "ACCEPT"
+        elif act in ("deny", "drop"):
+            return "DROP"
+        else:
+            print(f"[ERR] Invalid action '{action}' in policy. Use 'allow'/'accept' or 'deny'/'drop'.")
+            return None
+
     for rule in policy.get("ingress", []):
-        shell(["ip", "netns", "exec", ns, "iptables", "-A", "INPUT", "-p", rule.get("protocol", "tcp"), "--dport", str(rule["port"]), "-j", rule["action"].upper()])
+        action = validate_action(rule.get("action", ""))
+        if not action:
+            continue
+        shell(["ip", "netns", "exec", ns, "iptables", "-A", "INPUT", "-p", rule.get("protocol", "tcp"), "--dport", str(rule["port"]), "-j", action])
     for rule in policy.get("egress", []):
-        shell(["ip", "netns", "exec", ns, "iptables", "-A", "OUTPUT", "-p", rule.get("protocol", "tcp"), "--dport", str(rule["port"]), "-j", rule["action"].upper()])
+        action = validate_action(rule.get("action", ""))
+        if not action:
+            continue
+        shell(["ip", "netns", "exec", ns, "iptables", "-A", "OUTPUT", "-p", rule.get("protocol", "tcp"), "--dport", str(rule["port"]), "-j", action])
     print(f"[OK] Policy applied to {netname} in VPC {vpc}.")
     bimbo_log("apply_policy", f"Applied policy {policyfile} to {netname} in {vpc}")
 
